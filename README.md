@@ -36,7 +36,7 @@ cd C:\Users\<User>\.dsh\migration
 
 ### ③ 怎么算成功
 
-侧栏多出 `xxx` / `proj-a` / `proj-b` 等工作区（标题取自目录名） → 打开会话，模式标签是 **`WSL · 标准模式`**，`pwd` 为 `/home/xxx/…`。（细节见 **7 · 迁移后自检**）
+侧栏多出 `xxx` / `proj-a` / `proj-b` 等工作区（标题取自目录名；`/mnt/<盘符>` 项目以 Windows 盘路径出现）→ 打开会话，模式标签是 **`WSL · 标准模式`**，`pwd` 为 `/home/xxx/…` 或 `/mnt/<盘符>/…`。（细节见 **7 · 迁移后自检**）
 
 ---
 
@@ -93,6 +93,7 @@ migrated : 14   failed : 0   workspaces : 3 created, 14 session(s) registered
 |---|---|
 | 想先看清楚现状 | `.\run-migration.cmd --check` |
 | 迁移后某个工作区被我删了，会话不见了 | `.\run-migration.cmd --reconcile --yes`（只重新登记，不移动） |
+| 提示 `Cannot decide which WSL distribution to use` | `wsl -l -q` 看发行版名字，然后 `--distro <name>`（脚本会把它实际看到的结果打出来） |
 | 有会话冲突/不可迁移 | `--dry-run` 输出会点名到具体 id 与原因；见 **9 · FAQ** |
 | 想撤销 | 见 **8 · 回滚** |
 
@@ -117,6 +118,18 @@ migrated : 14   failed : 0   workspaces : 3 created, 14 session(s) registered
 | ❌ 归不了位 | dhd 每次读取用 header `cwd` 反推日志目录，不符 → 判 `corrupt` / `duplicate` |
 | ❌ 侧栏看不见 | 成员资格 = `realpath(cwd) == workspace.path`；Windows 上 `/home/…` 解析失败 → 静默过滤 |
 | ❌ 能开也跑错世界 | `standard` = Windows 工具；已开过回合的会话模式选择器锁死（`agent-preset/locked`） |
+
+### 4.1 `/mnt/<盘符>` 的项目
+
+WSL 里的 `/mnt/d/…` 不可能经 9P 提供，所以这类会话不能迁成 UNC 路径。脚本按插件自己的约定处理：
+
+| 原 cwd | 迁移后 cwd | 工作区形态 | 额外记录 |
+|---|---|---|---|
+| `/home/<user>/proj` | `\\wsl.localhost\<distro>\home\<user>\proj` | UNC 工作区 | — |
+| `/mnt/d/project` | `D:\project` | **Windows 盘路径**工作区 | `wsl-workspaces.json` 里记 `{ distro, born }` |
+| `D:\project`（本来就是 Windows 路径） | 不变 | 已有工作区 | 需要时 `--reconcile` 补登记 |
+
+盘路径工作区里：**bash 仍跑在 WSL**（宿主按 `wsl-workspaces.json` 里的 distro 起 `wsl.exe -d`），文件读写走 Windows 路径（快，且 drvfs 本来就不能走 9P）。
 
 ## 5 · 兼容性
 
@@ -158,7 +171,7 @@ migrated : 14   failed : 0   workspaces : 3 created, 14 session(s) registered
 |---|---|
 | 侧栏 Workspaces | `xxx` · `proj-a` · `proj-b` 各成一个 WSL 工作区 |
 | 会话模式标签 | `WSL · 标准模式`（或原模式的 WSL 变体） |
-| 会话内 `pwd` | `/home/xxx/…` |
+| 会话内 `pwd` | `/home/xxx/…`；`/mnt/<盘符>` 项目为 `/mnt/<盘符>/…` |
 | 事件帧完整性 | 迁移时逐条校验：帧数 = 原帧数 + 1，事件帧字节完全一致 |
 
 本机实测：`14/14` 迁移成功；dhd 启动后按它自己的 `realpath(cwd) == workspace.path` 规则复核 `18/18` 全部匹配；随后直接续跑了一个 4 万+ 事件的会话。

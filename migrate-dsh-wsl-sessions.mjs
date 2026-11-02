@@ -38,7 +38,12 @@
  *      (`agent-preset/locked`).
  *
  * So, per session, this script:
- *   1. rewrites header cwd   /home/<...>  ->  \\wsl.localhost\<distro>\home\<...>
+ *   1. rewrites header cwd. A distribution path (/home/<user>/...) becomes the
+ *      UNC spelling (\\wsl.localhost\<distro>\home\<user>\...). A
+ *      /mnt/<drive>/... path becomes its Windows drive path (D:\...), because
+ *      drvfs is not served over 9P and the plugin's /mnt workspaces carry drive
+ *      cwds; its workspace is recorded in wsl-workspaces.json so the host still
+ *      runs bash as `wsl.exe -d <distro>`.
  *      (frame 0 is recompressed alone; every event frame is copied byte for byte)
  *   2. appends one frame holding an `agent-preset/selected` event for the WSL
  *      variant of the mode the session last ran in
@@ -529,15 +534,82 @@ function uniq(values) {
 }
 
 function wslList() {
-  if (process.platform !== 'win32') return [];
+  if (process.platform !== 'win32') return { names: [], detail: 'this is not a Windows process' };
   try {
-    const raw = execFileSync('wsl.exe', ['-l', '-q'], { windowsHide: true, timeout: 20000 });
-    // wsl.exe writes UTF-16LE; a wrapper script may hand back UTF-8.
-    const text = raw.length >= 2 && raw[1] === 0 ? raw.toString('utf16le') : raw.toString('utf8');
-    return text.split(/\r?\n/).map((line) => line.replace(/\u0000/g, '').trim()).filter((line) => line.length !== 0);
+    const raw = execFileSync('wsl.exe', ['-l', '-q'], { windowsHide: true, timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] });
+    // wsl.exe writes UTF-16LE; a wrapper script may hand back UTF-8. Tolerate a BOM.
+    const text = raw.length >= 2 && (raw[0] === 0xff && raw[1] === 0xfe || raw[1] === 0)
+      ? raw.toString('utf16le')
+      : raw.toString('utf8');
+    const names = text.replace(/^\uFEFF/, '').split(/\r?\n/)
+      .map((line) => line.replace(/\u0000/g, '').trim())
+      .filter((line) => line.length !== 0);
+    return { names, detail: names.length === 0 ? 'wsl.exe -l -q printed no distribution' : `wsl.exe -l -q: ${names.join(', ')}` };
+  } catch (error) {
+    const stderr = error?.stderr !== undefined ? String(error.stderr).replace(/\u0000/g, '').trim() : '';
+    return { names: [], detail: `wsl.exe -l -q failed${stderr === '' ? ` (${error?.code ?? error?.message ?? 'unknown'})` : `: ${stderr.split(/\r?\n/)[0]}`}` };
+  }
+}
+
+/** Distributions already recorded for Windows-drive workspaces in wsl-workspaces.json. */
+function recordedDriveDistros(dshHome) {
+  try {
+    const store = JSON.parse(fs.readFileSync(path.join(dshHome, 'wsl-workspaces.json'), 'utf8'));
+    if (store === null || typeof store !== 'object' || Array.isArray(store)) return [];
+    return uniq(Object.values(store)
+      .map((entry) => (entry !== null && typeof entry === 'object' ? entry.distro : undefined))
+      .filter((value) => typeof value === 'string' && value !== ''));
   } catch {
     return [];
   }
+}
+
+/** `<drive>:\…` for a `/mnt/<drive>/…` Linux path, or undefined for other paths. */
+function drivePathOf(linuxPath) {
+  const match = /^\/mnt\/([a-zA-Z])(?:\/(.*))?$/.exec(linuxPath);
+  if (match === null) return undefined;
+  const rest = (match[2] ?? '').replace(/\//g, '\\');
+  return `${(match[1] ?? '').toUpperCase()}:\\${rest}`;
+}
+
+/** Port of canonicalWindowsPath() from the plugin: store key for a drive workspace. */
+function canonicalDriveKey(winPath) {
+  const match = /^([A-Za-z]):[\\/](.*)$/.exec(winPath);
+  if (match === null) return undefined;
+  const rest = (match[2] ?? '').replace(/[\\/]+/g, '\\').replace(/\\$/, '').toLowerCase();
+  return `${(match[1] ?? '').toLowerCase()}:\\${rest}`;
+}
+
+/**
+ * Record Windows-drive workspaces in <dshHome>/wsl-workspaces.json, the store the
+ * plugin reads to run `wsl.exe -d <distro>` for a drive-path session (a
+ * `/mnt/<drive>` workspace carries a Windows cwd; 9P cannot serve drvfs).
+ */
+function registerDriveWorkspaces(dshHome, winPaths, distro) {
+  const file = path.join(dshHome, 'wsl-workspaces.json');
+  let store = {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) store = parsed;
+  } catch { /* missing or corrupt reads as empty, exactly like the plugin */ }
+  const keys = [];
+  for (const winPath of winPaths) {
+    const key = canonicalDriveKey(winPath);
+    if (key === undefined) continue;
+    const entry = { distro };
+    try {
+      const stat = fs.statSync(winPath);
+      if (stat.isDirectory()) entry.born = Math.round(stat.birthtimeMs);
+    } catch { /* absent directory: store the record without `born` */ }
+    const existing = store[key];
+    if (existing !== null && typeof existing === 'object' && typeof existing.username === 'string' && existing.username !== '') {
+      entry.username = existing.username;
+    }
+    store[key] = entry;
+    keys.push(key);
+  }
+  writeFileAtomic(file, `${JSON.stringify(store, null, 2)}\n`);
+  return keys;
 }
 
 function distroHasDirectory(distro, posixPath) {
@@ -715,23 +787,29 @@ async function main() {
     .map((entry) => /^\\\\wsl\.localhost\\([^\\]+)\\/.exec(String(entry.header.cwd ?? '')))
     .filter((match) => match !== null)
     .map((match) => match[1]));
+  const listed = wslList();
+  const driveDistros = recordedDriveDistros(dshHome);
   let distro = opts.distro;
   if (distro === undefined) {
     if (uncDistros.length === 1) distro = uncDistros[0];
-    else {
-      const listed = wslList();
-      if (listed.length === 1) distro = listed[0];
-    }
+    else if (listed.names.length === 1) distro = listed.names[0];
+    else if (driveDistros.length === 1) distro = driveDistros[0];
   }
   if (distro === undefined) {
     out('');
     out('Cannot decide which WSL distribution to use.');
-    if (uncDistros.length > 1) out(`Sessions reference several: ${uncDistros.join(', ')}`);
-    else out('No stored session names one, and `wsl -l -q` did not name exactly one.');
-    out('Re-run with --distro <name>.');
+    if (uncDistros.length > 1) out(`stored sessions already name several: ${uncDistros.join(', ')}`);
+    out(`  ${listed.detail}`);
+    if (driveDistros.length !== 0) out(`  wsl-workspaces.json records: ${driveDistros.join(', ')}`);
+    out('');
+    out('List them yourself with:  wsl -l -q');
+    out('then pass one of the names:  --distro <name>');
     return 2;
   }
   out(`distribution  : ${distro}`);
+  if (listed.names.length !== 0 && !listed.names.includes(distro)) {
+    out(`                  WARNING: not in \`wsl -l -q\` (${listed.names.join(', ')})`);
+  }
   const plugins = detectWslPlugin(dshHome);
   if (plugins.length === 0) {
     out('plugin        : dsh-wsl-workspace NOT FOUND under profiles/*/node_modules');
@@ -758,7 +836,8 @@ async function main() {
       continue;
     }
     const posix = cwd.startsWith('/');
-    const newCwd = posix ? toUnc(cwd, distro) : cwd;
+    const drivePath = posix ? drivePathOf(cwd) : undefined;
+    const newCwd = posix ? (drivePath ?? toUnc(cwd, distro)) : cwd;
     const newProjectKey = projectKey(newCwd);
     if (!posix && entry.projectName === newProjectKey) {
       plan.push({ ...entry, action: 'skip', reason: 'already stored under its own cwd project directory' });
@@ -787,7 +866,7 @@ async function main() {
     const presetTarget = canAppend ? presetTargetFor(tail.lastPreset, header.agentPreset) : undefined;
     plan.push({
       ...entry, tail, action: fs.existsSync(targetLog) ? 'conflict' : 'migrate',
-      newCwd, newProjectKey, targetDir, targetLog, presetTarget,
+      newCwd, drivePath, newProjectKey, targetDir, targetLog, presetTarget,
       rewrite: posix || presetTarget !== undefined,
     });
   }
@@ -795,7 +874,7 @@ async function main() {
   const show = (entry) => {
     out(`  ${entry.header.id}`);
     out(`    cwd    ${entry.header.cwd}`);
-    out(`    ->     ${entry.newCwd}`);
+    out(`    ->     ${entry.newCwd}${entry.drivePath === undefined ? '' : '   （Windows 盘路径工作区，bash 仍跑在 WSL 里）'}`);
     out(`    dir    ${entry.projectName}\\${path.basename(entry.dir)}  ->  ${entry.newProjectKey}\\${path.basename(entry.dir)}`);
     out(`    format v${entry.header.version ?? '?'}   ${entry.tail.eventCount} event(s)   preset ${entry.tail.lastPreset ?? entry.header.agentPreset ?? '(none)'} -> ${entry.presetTarget ?? '(unchanged)'}`);
   };
@@ -1058,7 +1137,11 @@ async function main() {
         fs.renameSync(tmpGeneration, file);
       }
 
-      migrations.push({ sessionId: String(entry.header.id), canonicalPath: canonicalPathOf(entry.newCwd) });
+      migrations.push({
+        sessionId: String(entry.header.id),
+        canonicalPath: canonicalPathOf(entry.newCwd),
+        drive: entry.drivePath !== undefined,
+      });
       out(`  ok    ${entry.header.id}  v${entry.header.version ?? '?'}, ${entry.tail.eventCount} event(s)${facts.appended ? `, +${entry.presetTarget}` : ''}`);
     } catch (error) {
       fs.rmSync(path.join(entry.targetDir, `${entry.selected.name}.migrating`), { force: true });
@@ -1078,6 +1161,17 @@ async function main() {
       } else {
         registryReport = written.report;
         out(`  ok    workspace.json: ${written.report.created.length} workspace(s) created, ${written.report.attached.length} session(s) registered`);
+        const drivePaths = uniq(migrations.filter((entry) => entry.drive).map((entry) => entry.canonicalPath));
+        if (drivePaths.length !== 0) {
+          try {
+            const keys = registerDriveWorkspaces(dshHome, drivePaths, distro);
+            out(`  ok    wsl-workspaces.json: ${keys.length} drive workspace(s) registered for ${distro}`);
+            registryReport.driveKeys = keys;
+          } catch (error) {
+            failures.push({ id: '(wsl-workspaces.json)', error: String(error?.message ?? error) });
+            out(`  FAIL  wsl-workspaces.json: ${String(error?.message ?? error)}`);
+          }
+        }
       }
     } catch (error) {
       failures.push({ id: '(workspace.json)', error: String(error?.message ?? error) });
@@ -1124,6 +1218,9 @@ async function main() {
   if (registryReport !== undefined) {
     out(`workspaces     : ${registryReport.created.length} created, ${registryReport.attached.length} session(s) registered`);
     for (const record of registryReport.created) out(`                 + ${record.title}   ${record.path}`);
+    if (registryReport.driveKeys !== undefined && registryReport.driveKeys.length !== 0) {
+      out(`drive workspaces: ${registryReport.driveKeys.length} recorded in wsl-workspaces.json`);
+    }
   }
   if (attachmentsReport !== undefined) out(`attachments    : ${attachmentsReport}`);
   out(`failed         : ${failures.length}`);
