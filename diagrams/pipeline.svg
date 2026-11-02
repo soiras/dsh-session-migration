@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="206" viewBox="0 0 1000 206" role="img">
+<rect x="0.5" y="0.5" width="999" height="205" rx="14" fill="#FBFCFE" stroke="#E6EAF2" stroke-width="1"/>
+<text x="28" y="34" font-size="15" fill="#0F172A" font-weight="700" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','Microsoft YaHei',sans-serif">脚本内部流程（每条会话独立执行，失败只回滚该条）</text>
+<rect x="28" y="64" width="136" height="76" rx="12" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<circle cx="50" cy="88" r="10.5" fill="#334155"/>
+<text x="50" y="92" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">1</text>
+<text x="68" y="93" font-size="12.5" fill="#334155" font-weight="700" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','Microsoft YaHei',sans-serif">备份</text>
+<text x="42" y="120" font-size="10.5" fill="#475569" font-weight="400" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">sessions + 注册表</text>
+<line x1="167" y1="102.0" x2="174" y2="102.0" stroke="#94A3B8" stroke-width="2"/><path d="M174 96.5 L183 102.0 L174 107.5 Z" fill="#94A3B8"/>
+<rect x="186" y="64" width="136" height="76" rx="12" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1.5"/>
+<circle cx="208" cy="88" r="10.5" fill="#1E40AF"/>
+<text x="208" y="92" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">2</text>
+<text x="226" y="93" font-size="12.5" fill="#1E40AF" font-weight="700" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','Microsoft YaHei',sans-serif">改写首帧</text>
+<text x="200" y="120" font-size="10.5" fill="#475569" font-weight="400" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">header.cwd → UNC</text>
+<line x1="325" y1="102.0" x2="332" y2="102.0" stroke="#94A3B8" stroke-width="2"/><path d="M332 96.5 L341 102.0 L332 107.5 Z" fill="#94A3B8"/>
+<rect x="344" y="64" width="136" height="76" rx="12" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1.5"/>
+<circle cx="366" cy="88" r="10.5" fill="#1E40AF"/>
+<text x="366" y="92" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">3</text>
+<text x="384" y="93" font-size="12.5" fill="#1E40AF" font-weight="700" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','Microsoft YaHei',sans-serif">追加事件帧</text>
+<text x="358" y="120" font-size="10.5" fill="#475569" font-weight="400" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">preset = wsl-模式</text>
+<line x1="483" y1="102.0" x2="490" y2="102.0" stroke="#94A3B8" stroke-width="2"/><path d="M490 96.5 L499 102.0 L490 107.5 Z" fill="#94A3B8"/>
+<rect x="502" y="64" width="136" height="76" rx="12" fill="#F5F3FF" stroke="#DDD6FE" stroke-width="1.5"/>
+<circle cx="524" cy="88" r="10.5" fill="#5B21B6"/>
+<text x="524" y="92" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">4</text>
+<text x="542" y="93" font-size="12.5" fill="#5B21B6" font-weight="700" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','Microsoft YaHei',sans-serif">搬目录</text>
+<text x="516" y="120" font-size="10.5" fill="#475569" font-weight="400" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">projectKey(新 cwd)</text>
+<line x1="641" y1="102.0" x2="648" y2="102.0" stroke="#94A3B8" stroke-width="2"/><path d="M648 96.5 L657 102.0 L648 107.5 Z" fill="#94A3B8"/>
+<rect x="660" y="64" width="136" height="76" rx="12" fill="#F5F3FF" stroke="#DDD6FE" stroke-width="1.5"/>
+<circle cx="682" cy="88" r="10.5" fill="#5B21B6"/>
+<text x="682" y="92" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">5</text>
+<text x="700" y="93" font-size="12.5" fill="#5B21B6" font-weight="700" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','Microsoft YaHei',sans-serif">登记工作区</text>
+<text x="674" y="120" font-size="10.5" fill="#475569" font-weight="400" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">workspace.json</text>
+<line x1="799" y1="102.0" x2="806" y2="102.0" stroke="#94A3B8" stroke-width="2"/><path d="M806 96.5 L815 102.0 L806 107.5 Z" fill="#94A3B8"/>
+<rect x="818" y="64" width="136" height="76" rx="12" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1.5"/>
+<circle cx="840" cy="88" r="10.5" fill="#047857"/>
+<text x="840" y="92" font-size="11.5" fill="#FFFFFF" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">6</text>
+<text x="858" y="93" font-size="12.5" fill="#047857" font-weight="700" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','Microsoft YaHei',sans-serif">校验</text>
+<text x="832" y="120" font-size="10.5" fill="#475569" font-weight="400" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Cascadia Mono',monospace">字节级重读比对</text>
+<text x="28" y="172" font-size="11.5" fill="#64748B" font-weight="400" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','Microsoft YaHei',sans-serif">另：合并 &lt;WSL home&gt;/.dsh/attachments（内容寻址，可安全合并）；workspace.json 写前做结构校验，不合法就不写。完成后重启 dhd 生效。</text>
+</svg>
